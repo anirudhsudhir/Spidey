@@ -10,35 +10,36 @@ import (
 )
 
 func TestPingWebsites(t *testing.T) {
-	totalUrls := 5
-	var testServers []*httptest.Server
+	urlSetSize := 5
+	var seedServers []*httptest.Server
 	var testUrls []string
+	var allServers []*httptest.Server
+	var secondaryUrls string
+	var tempServer *httptest.Server
 
-	for i := 1; i <= totalUrls; i++ {
-		testServers = append(testServers, createServer(time.Duration(100+i*50)*time.Millisecond, string(rune(i+64))))
-		testUrls = append(testUrls, testServers[i-1].URL)
+	for i := 0; i < urlSetSize; i++ {
+		secondaryUrls = ""
+		for j := 0; j < urlSetSize; j++ {
+			tempServer = createServer(time.Duration(100+j*50)*time.Millisecond, "random text")
+			secondaryUrls += tempServer.URL + " "
+			allServers = append(allServers, tempServer)
+		}
+		seedServers = append(seedServers, createServer(time.Duration(100+i*50)*time.Millisecond, secondaryUrls))
+		allServers = append(allServers, seedServers[i])
+		testUrls = append(testUrls, seedServers[i].URL)
 	}
 	defer func() {
-		for i := 0; i < totalUrls; i++ {
-			testServers[i].Close()
+		for i := 0; i < len(allServers); i++ {
+			allServers[i].Close()
 		}
 	}()
 
 	t.Run("all links crawled", func(t *testing.T) {
 		got := crawl.CrawlLinks(testUrls)
-		want := totalUrls
+		want := urlSetSize * urlSetSize
 
 		if got != want {
-			t.Errorf("crawled %q links, want %q links", got, want)
-		}
-	})
-
-	t.Run("link reponses matching", func(t *testing.T) {
-		got := crawl.GetResponses()
-		want := "ABCDE"
-
-		if got != want {
-			t.Errorf("got %q as body, want %q as body", got, want)
+			t.Errorf("crawled %d links, want %d links", got, want)
 		}
 	})
 }
