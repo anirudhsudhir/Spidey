@@ -3,6 +3,7 @@ package crawl
 import (
 	"io"
 	"net/http"
+	"regexp"
 	"sync"
 )
 
@@ -17,19 +18,17 @@ type linksCrawled struct {
 	mu             sync.Mutex
 }
 
-type linkResponses struct {
-	linkResponse string
-	mu           sync.Mutex
-}
-
 var (
-	totalLinksList     links         = links{urls: make(map[string]bool)}
-	totalLinksCrawled  linksCrawled  = linksCrawled{}
-	totalLinkResponses linkResponses = linkResponses{}
+	totalLinksList    links        = links{urls: make(map[string]bool)}
+	totalLinksCrawled linksCrawled = linksCrawled{}
 )
 
 func CrawlLinks(urls []string) int {
-	pingWebsites(urls)
+	var wgMain sync.WaitGroup
+	wgMain.Add(1)
+
+	pingWebsites(urls, &wgMain)
+	wgMain.Wait()
 
 	totalLinksCrawled.mu.Lock()
 	linksCrawledCount := totalLinksCrawled.linksCount
@@ -38,17 +37,8 @@ func CrawlLinks(urls []string) int {
 	return linksCrawledCount
 }
 
-func GetResponses() string {
-	totalLinkResponses.mu.Lock()
-	responses := totalLinkResponses.linkResponse
-	totalLinkResponses.mu.Unlock()
-
-	return responses
-}
-
-func pingWebsites(urls []string) {
+func pingWebsites(urls []string, wgParent *sync.WaitGroup) {
 	var wg sync.WaitGroup
-	wg.Add(len(urls))
 
 	for _, url := range urls {
 		totalLinksList.mu.Lock()
@@ -61,12 +51,14 @@ func pingWebsites(urls []string) {
 			totalLinksCrawled.mu.Unlock()
 
 			currentUrl := url
+			wg.Add(1)
 			go fetchLinks(currentUrl, &wg)
 
 		}
 		totalLinksList.mu.Unlock()
 	}
 	wg.Wait()
+	wgParent.Done()
 }
 
 func fetchLinks(url string, wg *sync.WaitGroup) {
@@ -76,6 +68,7 @@ func fetchLinks(url string, wg *sync.WaitGroup) {
 		totalLinksCrawled.failedRequests++
 		totalLinksCrawled.mu.Unlock()
 
+		wg.Done()
 		return
 	}
 
@@ -85,6 +78,7 @@ func fetchLinks(url string, wg *sync.WaitGroup) {
 		totalLinksCrawled.failedRequests++
 		totalLinksCrawled.mu.Unlock()
 
+		wg.Done()
 		return
 	}
 	defer res.Body.Close()
@@ -95,12 +89,24 @@ func fetchLinks(url string, wg *sync.WaitGroup) {
 		totalLinksCrawled.failedRequests++
 		totalLinksCrawled.mu.Unlock()
 
+		wg.Done()
 		return
 	}
 
-	totalLinkResponses.mu.Lock()
-	totalLinkResponses.linkResponse += string(resBody)
-	totalLinkResponses.mu.Unlock()
+	linkExtractSet := regexp.MustCompile(`(http)(.*?)( )`)
+	extractedLinks := linkExtractSet.FindAllString(string(resBody), -1)
+
+	var urlSet []string
+	for _, link := range extractedLinks {
+		urlSet = append(urlSet, link)
+	}
+
+	if len(urlSet) > 0 {
+		var wgParent sync.WaitGroup
+		wgParent.Add(1)
+		go pingWebsites(urlSet, &wgParent)
+		wgParent.Wait()
+	}
 
 	wg.Done()
 }
