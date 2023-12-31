@@ -15,7 +15,7 @@ func TestPingWebsites(t *testing.T) {
 	var testUrls []string
 
 	for i := 1; i <= totalUrls; i++ {
-		testServers = append(testServers, createServer(time.Duration(100+i*50)*time.Millisecond))
+		testServers = append(testServers, createServer(time.Duration(100+i*50)*time.Millisecond, string(rune(i+64))))
 		testUrls = append(testUrls, testServers[i-1].URL)
 	}
 	defer func() {
@@ -24,17 +24,29 @@ func TestPingWebsites(t *testing.T) {
 		}
 	}()
 
-	got := crawl.CrawlLinks(testUrls)
-	want := totalUrls
+	t.Run("all links crawled", func(t *testing.T) {
+		got := crawl.CrawlLinks(testUrls)
+		want := totalUrls
 
-	if got != want {
-		t.Errorf("crawled %q links, want %q links", got, want)
-	}
+		if got != want {
+			t.Errorf("crawled %q links, want %q links", got, want)
+		}
+	})
+
+	t.Run("link reponses matching", func(t *testing.T) {
+		got := crawl.GetResponses()
+		want := "ABCDE"
+
+		if got != want {
+			t.Errorf("got %q as body, want %q as body", got, want)
+		}
+	})
 }
 
-func createServer(delay time.Duration) *httptest.Server {
+func createServer(delay time.Duration, message string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(delay)
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(message))
 	}))
 }
