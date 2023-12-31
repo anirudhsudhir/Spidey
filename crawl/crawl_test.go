@@ -24,7 +24,7 @@ func TestPingWebsites(t *testing.T) {
 		}
 	}()
 
-	got := crawl.CrawlLinks()
+	got := crawl.CrawlLinks(testUrls)
 	want := totalUrls
 
 	if got != want {
