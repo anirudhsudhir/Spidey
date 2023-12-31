@@ -1,6 +1,9 @@
 package crawl
 
-import "sync"
+import (
+	"net/http"
+	"sync"
+)
 
 type links struct {
 	urls map[string]bool
@@ -18,12 +21,6 @@ var (
 )
 
 func CrawlLinks(urls []string) int {
-	totalLinksList.mu.Lock()
-	for _, url := range urls {
-		totalLinksList.urls[url] = false
-	}
-	totalLinksList.mu.Unlock()
-
 	pingWebsites(urls)
 
 	totalLinksCrawled.mu.Lock()
@@ -34,7 +31,29 @@ func CrawlLinks(urls []string) int {
 }
 
 func pingWebsites(urls []string) {
-	totalLinksCrawled.mu.Lock()
-	totalLinksCrawled.linksCount += 5
-	totalLinksCrawled.mu.Unlock()
+	var wg sync.WaitGroup
+	wg.Add(len(urls))
+
+	for _, url := range urls {
+		totalLinksList.mu.Lock()
+
+		if totalLinksList.urls[url] == false {
+			totalLinksList.urls[url] = true
+
+			totalLinksCrawled.mu.Lock()
+			totalLinksCrawled.linksCount++
+			totalLinksCrawled.mu.Unlock()
+
+			currentUrl := url
+			go fetchLinks(currentUrl, &wg)
+
+		}
+		totalLinksList.mu.Unlock()
+	}
+	wg.Wait()
+}
+
+func fetchLinks(url string, wg *sync.WaitGroup) {
+	http.Get(url)
+	wg.Done()
 }
