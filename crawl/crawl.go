@@ -1,14 +1,17 @@
 package crawl
 
 import (
+	"encoding/csv"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 )
 
-type links struct {
+type linkStore struct {
 	urls map[string]bool
 	mu   sync.Mutex
 }
@@ -35,9 +38,15 @@ type totalLinkCrawlStatus struct {
 	mu          sync.Mutex
 }
 
+type errorLogs struct {
+	errorLog [][]byte
+	mu       sync.Mutex
+}
+
 var (
-	totalLinkStore   links = links{urls: make(map[string]bool)}
+	totalLinkStore   linkStore = linkStore{urls: make(map[string]bool)}
 	totalCrawlStatus totalLinkCrawlStatus
+	totalErrorLogs   errorLogs
 )
 
 func CrawlLinks(urls []string) CrawlStats {
@@ -49,16 +58,28 @@ func CrawlLinks(urls []string) CrawlStats {
 
 	totalCrawlStats := CrawlStats{}
 
+	var finalCrawlData [][]string
+
 	totalCrawlStatus.mu.Lock()
 	for _, crawlStatus := range totalCrawlStatus.totalStatus {
+		tempStatus := make([]string, 0)
 		totalCrawlStats.TotalCrawls++
 		if crawlStatus.bool {
+			tempStatus = append(tempStatus, crawlStatus.string, "crawl successful")
 			totalCrawlStats.SuccessfulCrawls++
 		} else {
+			tempStatus = append(tempStatus, crawlStatus.string, "crawl failed")
 			totalCrawlStats.FailedCrawls++
 		}
+		finalCrawlData = append(finalCrawlData, tempStatus)
 	}
 	totalCrawlStatus.mu.Unlock()
+
+	writeCrawlLogs(finalCrawlData)
+
+	totalErrorLogs.mu.Lock()
+	writeErrorLogs(totalErrorLogs.errorLog)
+	totalErrorLogs.mu.Unlock()
 
 	return totalCrawlStats
 }
@@ -94,6 +115,7 @@ func pingWebsites(urls []string, wgParent *sync.WaitGroup) {
 func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
+		recordErrorLogs(err)
 		crawlStatus := crawlStatusType{false, url}
 		*crawlStatusChannel <- crawlStatus
 		return
@@ -101,6 +123,7 @@ func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
+		recordErrorLogs(err)
 		crawlStatus := crawlStatusType{false, url}
 		*crawlStatusChannel <- crawlStatus
 		return
@@ -109,6 +132,7 @@ func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
+		recordErrorLogs(err)
 		crawlStatus := crawlStatusType{false, url}
 		*crawlStatusChannel <- crawlStatus
 		return
@@ -131,4 +155,46 @@ func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 
 	crawlStatus := crawlStatusType{true, url}
 	*crawlStatusChannel <- crawlStatus
+}
+
+func writeCrawlLogs(finalCrawlData [][]string) {
+	file, err := os.Create("crawl_data.csv")
+	if err != nil {
+		recordErrorLogs(err)
+		return
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	for _, crawlData := range finalCrawlData {
+		err := writer.Write(crawlData)
+		if err != nil {
+			recordErrorLogs(err)
+			return
+		}
+	}
+	writer.Flush()
+}
+
+func writeErrorLogs(finalErrorLogs [][]byte) {
+	file, err := os.Create("log.txt")
+	if err != nil {
+		fmt.Printf("Encountered error while create error log file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	for _, log := range finalErrorLogs {
+		_, err = file.Write(log)
+		if err != nil {
+			fmt.Printf("Encountered error while writing error logs to file: %v", err)
+			return
+		}
+	}
+}
+
+func recordErrorLogs(err error) {
+	totalErrorLogs.mu.Lock()
+	totalErrorLogs.errorLog = append(totalErrorLogs.errorLog, []byte(err.Error()+"\n"))
+	totalErrorLogs.mu.Unlock()
 }
