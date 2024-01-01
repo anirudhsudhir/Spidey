@@ -21,12 +21,12 @@ func TestPingWebsites(t *testing.T) {
 		secondaryUrls = ""
 		for j := 0; j < urlSetSize; j++ {
 			tempServer = createServer(50*time.Millisecond, "random text")
-			secondaryUrls += tempServer.URL + " "
+			secondaryUrls += "\"" + tempServer.URL + "\""
 			allServers = append(allServers, tempServer)
 		}
 		seedServers = append(seedServers, createServer(50*time.Millisecond, secondaryUrls))
 		allServers = append(allServers, seedServers[i])
-		testUrls = append(testUrls, seedServers[i].URL)
+		testUrls = append(testUrls, "\""+seedServers[i].URL+"\"")
 	}
 	defer func() {
 		for i := 0; i < len(allServers); i++ {
