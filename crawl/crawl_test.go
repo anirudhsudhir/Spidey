@@ -10,7 +10,7 @@ import (
 )
 
 func TestPingWebsites(t *testing.T) {
-	urlSetSize := 5
+	urlSetSize := 10
 	var seedServers []*httptest.Server
 	var testUrls []string
 	var allServers []*httptest.Server
@@ -35,7 +35,7 @@ func TestPingWebsites(t *testing.T) {
 	}()
 
 	t.Run("all links crawled", func(t *testing.T) {
-		got := crawl.CrawlLinks(testUrls)
+		got := crawl.CrawlLinks(testUrls).SuccessfulCrawls
 		want := urlSetSize*urlSetSize + urlSetSize
 
 		if got != want {
