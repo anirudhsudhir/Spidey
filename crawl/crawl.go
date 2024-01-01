@@ -50,11 +50,10 @@ var (
 )
 
 func CrawlLinks(urls []string) CrawlStats {
-	var wgMain sync.WaitGroup
-	wgMain.Add(1)
+	statusChannel := make(chan crawlStatusType)
 
-	pingWebsites(urls, &wgMain)
-	wgMain.Wait()
+	go pingWebsites(urls, statusChannel)
+	<-statusChannel
 
 	totalCrawlStats := CrawlStats{}
 
@@ -84,7 +83,7 @@ func CrawlLinks(urls []string) CrawlStats {
 	return totalCrawlStats
 }
 
-func pingWebsites(urls []string, wgParent *sync.WaitGroup) {
+func pingWebsites(urls []string, completedCrawl chan crawlStatusType) {
 	crawlStatusChannel := make(chan crawlStatusType)
 	gorountinesCreated := 0
 
@@ -93,7 +92,7 @@ func pingWebsites(urls []string, wgParent *sync.WaitGroup) {
 		if totalLinkStore.urls[url] == false {
 
 			currentUrl := strings.Trim(url, "\"")
-			go fetchLinks(currentUrl, &crawlStatusChannel)
+			go fetchLinks(currentUrl, crawlStatusChannel)
 			totalLinkStore.urls[url] = true
 			gorountinesCreated++
 
@@ -108,16 +107,15 @@ func pingWebsites(urls []string, wgParent *sync.WaitGroup) {
 		totalCrawlStatus.totalStatus = append(totalCrawlStatus.totalStatus, currentStatus)
 		totalCrawlStatus.mu.Unlock()
 	}
-
-	wgParent.Done()
+	completedCrawl <- crawlStatusType{}
 }
 
-func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
+func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		recordErrorLogs(err)
 		crawlStatus := crawlStatusType{false, url}
-		*crawlStatusChannel <- crawlStatus
+		crawlStatusChannel <- crawlStatus
 		return
 	}
 
@@ -125,7 +123,7 @@ func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 	if err != nil {
 		recordErrorLogs(err)
 		crawlStatus := crawlStatusType{false, url}
-		*crawlStatusChannel <- crawlStatus
+		crawlStatusChannel <- crawlStatus
 		return
 	}
 	defer res.Body.Close()
@@ -134,7 +132,7 @@ func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 	if err != nil {
 		recordErrorLogs(err)
 		crawlStatus := crawlStatusType{false, url}
-		*crawlStatusChannel <- crawlStatus
+		crawlStatusChannel <- crawlStatus
 		return
 	}
 
@@ -147,14 +145,13 @@ func fetchLinks(url string, crawlStatusChannel *chan crawlStatusType) {
 	}
 
 	if len(urlSet) > 0 {
-		var wgParent sync.WaitGroup
-		wgParent.Add(1)
-		go pingWebsites(urlSet, &wgParent)
-		wgParent.Wait()
+		statusChannel := make(chan crawlStatusType)
+		go pingWebsites(urlSet, statusChannel)
+		<-statusChannel
 	}
 
 	crawlStatus := crawlStatusType{true, url}
-	*crawlStatusChannel <- crawlStatus
+	crawlStatusChannel <- crawlStatus
 }
 
 func writeCrawlLogs(finalCrawlData [][]string) {
