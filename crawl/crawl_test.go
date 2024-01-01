@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anirudhsudhir/pingpong/crawl"
+	"github.com/anirudhsudhir/spidey/crawl"
 )
 
 func TestPingWebsites(t *testing.T) {
@@ -35,7 +35,7 @@ func TestPingWebsites(t *testing.T) {
 	}()
 
 	t.Run("all links crawled", func(t *testing.T) {
-		got := crawl.CrawlLinks(testUrls).SuccessfulCrawls
+		got := crawl.CrawlLinks(testUrls, time.Second).SuccessfulCrawls
 		want := urlSetSize*urlSetSize + urlSetSize
 
 		if got != want {

@@ -9,7 +9,13 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
+
+type timer struct {
+	timeElapsed bool
+	rmu         sync.RWMutex
+}
 
 type linkStore struct {
 	urls map[string]bool
@@ -44,16 +50,26 @@ type errorLogs struct {
 }
 
 var (
+	crawlerTimer     timer
 	totalLinkStore   linkStore = linkStore{urls: make(map[string]bool)}
 	totalCrawlStatus totalLinkCrawlStatus
 	totalErrorLogs   errorLogs
 )
 
-func CrawlLinks(urls []string) CrawlStats {
+func CrawlLinks(urls []string, allowedRuntime time.Duration) CrawlStats {
 	statusChannel := make(chan crawlStatusType)
 
 	go pingWebsites(urls, statusChannel)
-	<-statusChannel
+
+	select {
+	case <-statusChannel:
+		break
+	case <-time.After(allowedRuntime):
+		crawlerTimer.rmu.Lock()
+		crawlerTimer.timeElapsed = true
+		crawlerTimer.rmu.Unlock()
+		<-statusChannel
+	}
 
 	totalCrawlStats := CrawlStats{}
 
@@ -84,6 +100,14 @@ func CrawlLinks(urls []string) CrawlStats {
 }
 
 func pingWebsites(urls []string, completedCrawl chan crawlStatusType) {
+	crawlerTimer.rmu.RLock()
+	if crawlerTimer.timeElapsed {
+		completedCrawl <- crawlStatusType{}
+		crawlerTimer.rmu.RUnlock()
+		return
+	}
+	crawlerTimer.rmu.RUnlock()
+
 	crawlStatusChannel := make(chan crawlStatusType)
 	gorountinesCreated := 0
 
