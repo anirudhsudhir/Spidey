@@ -24,20 +24,15 @@ type linkStore struct {
 }
 
 type CrawlStats struct {
-	TotalCrawls      int
-	SuccessfulCrawls int
-	FailedCrawls     int
-}
-
-type linkCrawlStatusType struct {
-	url             string
-	successfulCrawl bool
-	mu              sync.Mutex
+	TotalCrawls         int
+	SuccessfulCrawls    int
+	FailedCrawls        int
+	RequestTimeExceeded int
 }
 
 type crawlStatusType struct {
-	bool
-	string
+	crawlStatus string
+	url         string
 }
 
 type totalLinkCrawlStatus struct {
@@ -49,6 +44,12 @@ type errorLogs struct {
 	errorLog [][]byte
 	mu       sync.Mutex
 }
+
+const (
+	crawlSuccess             = "success"
+	crawFail                 = "failure"
+	crawlRequestTimeExceeded = "request time exceeded"
+)
 
 var (
 	maxRequestTime          time.Duration
@@ -81,14 +82,17 @@ func CrawlLinks(urls []string, totalAllowedCrawlTime, maxAllowedRequestTime time
 	var finalCrawlData [][]string
 
 	totalCrawlStatus.mu.Lock()
-	for _, crawlStatus := range totalCrawlStatus.totalStatus {
+	for _, currentCrawlStatus := range totalCrawlStatus.totalStatus {
 		tempStatus := make([]string, 0)
 		totalCrawlStats.TotalCrawls++
-		if crawlStatus.bool {
-			tempStatus = append(tempStatus, crawlStatus.string, "crawl successful")
+		if currentCrawlStatus.crawlStatus == crawlSuccess {
+			tempStatus = append(tempStatus, currentCrawlStatus.url, "crawl successful")
 			totalCrawlStats.SuccessfulCrawls++
-		} else {
-			tempStatus = append(tempStatus, crawlStatus.string, "crawl failed")
+		} else if currentCrawlStatus.crawlStatus == crawlRequestTimeExceeded {
+			tempStatus = append(tempStatus, currentCrawlStatus.url, "request time exceeded")
+			totalCrawlStats.RequestTimeExceeded++
+		} else if currentCrawlStatus.crawlStatus == crawFail {
+			tempStatus = append(tempStatus, currentCrawlStatus.url, "crawl failed")
 			totalCrawlStats.FailedCrawls++
 		}
 		finalCrawlData = append(finalCrawlData, tempStatus)
@@ -118,7 +122,7 @@ func pingWebsites(urls []string, completedCrawl chan crawlStatusType) {
 
 	totalLinkStore.mu.Lock()
 	for _, url := range urls {
-		if totalLinkStore.urls[url] == false {
+		if !totalLinkStore.urls[url] {
 
 			currentUrl := strings.Trim(url, "\"")
 			go fetchLinks(currentUrl, crawlStatusChannel)
@@ -132,7 +136,7 @@ func pingWebsites(urls []string, completedCrawl chan crawlStatusType) {
 	for i := 1; i <= gorountinesCreated; i++ {
 		rountineStatus := <-crawlStatusChannel
 		totalCrawlStatus.mu.Lock()
-		currentStatus := crawlStatusType{rountineStatus.bool, rountineStatus.string}
+		currentStatus := crawlStatusType{rountineStatus.crawlStatus, rountineStatus.url}
 		totalCrawlStatus.totalStatus = append(totalCrawlStatus.totalStatus, currentStatus)
 		totalCrawlStatus.mu.Unlock()
 	}
@@ -143,7 +147,7 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		recordErrorLogs(err)
-		crawlStatus := crawlStatusType{false, url}
+		crawlStatus := crawlStatusType{crawFail, url}
 		crawlStatusChannel <- crawlStatus
 		return
 	}
@@ -161,14 +165,14 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	case <-performRequest():
 		if err != nil {
 			recordErrorLogs(err)
-			crawlStatus := crawlStatusType{false, url}
+			crawlStatus := crawlStatusType{crawFail, url}
 			crawlStatusChannel <- crawlStatus
 			return
 		}
 	case <-time.After(maxRequestTime):
 		errMessage := fmt.Sprintf("%q took more than %d milliseconds to respond", url, maxRequestTimeInSeconds)
 		recordErrorLogs(errors.New(errMessage))
-		crawlStatus := crawlStatusType{false, url}
+		crawlStatus := crawlStatusType{crawlRequestTimeExceeded, url}
 		crawlStatusChannel <- crawlStatus
 		return
 	}
@@ -177,7 +181,7 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		recordErrorLogs(err)
-		crawlStatus := crawlStatusType{true, url}
+		crawlStatus := crawlStatusType{crawlSuccess, url}
 		crawlStatusChannel <- crawlStatus
 		return
 	}
@@ -186,9 +190,7 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	extractedLinks := linkExtractSet.FindAllString(string(resBody), -1)
 
 	var urlSet []string
-	for _, link := range extractedLinks {
-		urlSet = append(urlSet, link)
-	}
+	urlSet = append(urlSet, extractedLinks...)
 
 	if len(urlSet) > 0 {
 		statusChannel := make(chan crawlStatusType)
@@ -196,7 +198,7 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 		<-statusChannel
 	}
 
-	crawlStatus := crawlStatusType{true, url}
+	crawlStatus := crawlStatusType{crawlSuccess, url}
 	crawlStatusChannel <- crawlStatus
 }
 

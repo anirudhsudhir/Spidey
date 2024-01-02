@@ -9,6 +9,6 @@ import (
 
 func main() {
 	seedUrls := []string{}
-	crawlStats := crawl.CrawlLinks(seedUrls, time.Second, time.Second)
-	fmt.Printf("TotalCrawls: %d, SuccessfulCrawls: %d, FailedCrawls: %d", crawlStats.TotalCrawls, crawlStats.SuccessfulCrawls, crawlStats.FailedCrawls)
+	crawlStats := crawl.CrawlLinks(seedUrls, 1*time.Second, time.Second)
+	fmt.Printf("TotalCrawls: %d, SuccessfulCrawls: %d, FailedCrawls: %d, Request Time Exceeded: %d", crawlStats.TotalCrawls, crawlStats.SuccessfulCrawls, crawlStats.FailedCrawls, crawlStats.RequestTimeExceeded)
 }
