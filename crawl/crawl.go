@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,13 +51,17 @@ type errorLogs struct {
 }
 
 var (
-	crawlerTimer     timer
-	totalLinkStore   linkStore = linkStore{urls: make(map[string]bool)}
-	totalCrawlStatus totalLinkCrawlStatus
-	totalErrorLogs   errorLogs
+	maxRequestTime          time.Duration
+	maxRequestTimeInSeconds int64
+	crawlerTimer            timer
+	totalLinkStore          linkStore = linkStore{urls: make(map[string]bool)}
+	totalCrawlStatus        totalLinkCrawlStatus
+	totalErrorLogs          errorLogs
 )
 
-func CrawlLinks(urls []string, allowedRuntime time.Duration) CrawlStats {
+func CrawlLinks(urls []string, totalAllowedCrawlTime, maxAllowedRequestTime time.Duration) CrawlStats {
+	maxRequestTime = maxAllowedRequestTime
+	maxRequestTimeInSeconds = int64(maxRequestTime / time.Millisecond)
 	statusChannel := make(chan crawlStatusType)
 
 	go pingWebsites(urls, statusChannel)
@@ -64,7 +69,7 @@ func CrawlLinks(urls []string, allowedRuntime time.Duration) CrawlStats {
 	select {
 	case <-statusChannel:
 		break
-	case <-time.After(allowedRuntime):
+	case <-time.After(totalAllowedCrawlTime):
 		crawlerTimer.rmu.Lock()
 		crawlerTimer.timeElapsed = true
 		crawlerTimer.rmu.Unlock()
@@ -143,9 +148,26 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 		return
 	}
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		recordErrorLogs(err)
+	var res *http.Response
+	performRequest := func() chan struct{} {
+		ch := make(chan struct{})
+		go func() {
+			res, err = http.DefaultClient.Do(req)
+			close(ch)
+		}()
+		return ch
+	}
+	select {
+	case <-performRequest():
+		if err != nil {
+			recordErrorLogs(err)
+			crawlStatus := crawlStatusType{false, url}
+			crawlStatusChannel <- crawlStatus
+			return
+		}
+	case <-time.After(maxRequestTime):
+		errMessage := fmt.Sprintf("%q took more than %d milliseconds to respond", url, maxRequestTimeInSeconds)
+		recordErrorLogs(errors.New(errMessage))
 		crawlStatus := crawlStatusType{false, url}
 		crawlStatusChannel <- crawlStatus
 		return
@@ -155,7 +177,7 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		recordErrorLogs(err)
-		crawlStatus := crawlStatusType{false, url}
+		crawlStatus := crawlStatusType{true, url}
 		crawlStatusChannel <- crawlStatus
 		return
 	}
