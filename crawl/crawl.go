@@ -161,6 +161,30 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 		}()
 		return ch
 	}
+	crawlerTimer.rmu.RLock()
+	if crawlerTimer.timeElapsed {
+		errMessage := fmt.Sprintf("request to %q cancelled as allowed time exceeded", url)
+		recordErrorLogs(errors.New(errMessage))
+		crawlStatus := crawlStatusType{crawlRequestTimeExceeded, url}
+		crawlStatusChannel <- crawlStatus
+		crawlerTimer.rmu.RUnlock()
+		return
+	}
+	crawlerTimer.rmu.RUnlock()
+
+	time.Sleep(2 * time.Second)
+
+	crawlerTimer.rmu.RLock()
+	if crawlerTimer.timeElapsed {
+		errMessage := fmt.Sprintf("request to %q cancelled as allowed time exceeded", url)
+		recordErrorLogs(errors.New(errMessage))
+		crawlStatus := crawlStatusType{crawlRequestTimeExceeded, url}
+		crawlStatusChannel <- crawlStatus
+		crawlerTimer.rmu.RUnlock()
+		return
+	}
+	crawlerTimer.rmu.RUnlock()
+
 	select {
 	case <-performRequest():
 		if err != nil {

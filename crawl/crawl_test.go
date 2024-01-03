@@ -35,7 +35,7 @@ func TestPingWebsites(t *testing.T) {
 	}()
 
 	t.Run("all links crawled", func(t *testing.T) {
-		got := crawl.CrawlLinks(testUrls, time.Second, 100*time.Millisecond).SuccessfulCrawls
+		got := crawl.CrawlLinks(testUrls, 10*time.Second, 100*time.Millisecond).SuccessfulCrawls
 		want := 20
 
 		if got != want {
