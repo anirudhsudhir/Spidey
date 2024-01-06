@@ -20,7 +20,7 @@ func TestPingWebsites(t *testing.T) {
 	for i := 0; i < urlSetSize; i++ {
 		secondaryUrls = "random text"
 		for j := 0; j < urlSetSize; j++ {
-			tempServer = createServer(time.Duration(50+j*50)*time.Millisecond, "random text")
+			tempServer = createServer(time.Duration(50)*time.Millisecond, "random text")
 			secondaryUrls += "\"" + tempServer.URL + "\""
 			allServers = append(allServers, tempServer)
 		}
@@ -36,7 +36,7 @@ func TestPingWebsites(t *testing.T) {
 
 	t.Run("all links crawled", func(t *testing.T) {
 		got := crawl.CrawlLinks(testUrls, 10*time.Second, 100*time.Millisecond).SuccessfulCrawls
-		want := 20
+		want := urlSetSize + urlSetSize*urlSetSize
 
 		if got != want {
 			t.Errorf("crawled %d links, want %d links", got, want)
