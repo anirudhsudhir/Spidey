@@ -153,14 +153,6 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	}
 
 	var res *http.Response
-	performRequest := func() chan struct{} {
-		ch := make(chan struct{})
-		go func() {
-			res, err = http.DefaultClient.Do(req)
-			close(ch)
-		}()
-		return ch
-	}
 	crawlerTimer.rmu.RLock()
 	if crawlerTimer.timeElapsed {
 		errMessage := fmt.Sprintf("request to %q cancelled as allowed time exceeded", url)
@@ -185,8 +177,14 @@ func fetchLinks(url string, crawlStatusChannel chan crawlStatusType) {
 	}
 	crawlerTimer.rmu.RUnlock()
 
+	performRequestChan := make(chan crawlStatusType)
+	go func() {
+		res, err = http.DefaultClient.Do(req)
+		performRequestChan <- crawlStatusType{}
+	}()
+
 	select {
-	case <-performRequest():
+	case <-performRequestChan:
 		if err != nil {
 			recordErrorLogs(err)
 			crawlStatus := crawlStatusType{crawFail, url}

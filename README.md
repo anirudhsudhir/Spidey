@@ -4,8 +4,6 @@
 
 A multithreaded web crawler written in Go.
 
-Currently WIP.
-
 ### About
 
 Spidey has been built following the test-driven development approach.
@@ -29,18 +27,16 @@ cd spidey
 ```
 
 3. Build the project and run Spidey.
-   Pass the total crawl time of the crawler and maximum request time per link (in milliseconds) as arguments
+   Pass the total allowed runtime time of the crawler and maximum request time per link (in milliseconds) as arguments
 
 ```bash
 go build
 ./spidey 5000 2000
 ```
 
-Warning: The total crawl time is not indicative of the total run time. It specifies the time limit upto which Spidey parses links and creates new goroutines. The runtime will exceed crawl time as Spidey has to complete and terminate all of the routines created.
-
 ### Results
 
 Spidey's best result has been a discovery of 26,454 unique links in 1 minute and 59 seconds, starting with seven seed URLs.  
 All of these links were valid, including references to static content.  
 It achieved this despite a predefined delay of 2 seconds between each consecutive set of network requests.  
-This was enforced to avoid rate limit restrictions.  
+This was enforced to avoid rate limit restrictions.
