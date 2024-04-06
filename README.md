@@ -4,6 +4,8 @@
 
 A multithreaded web crawler written in Go.
 
+NOTE: An improved version of the same project can be found at [Spidey-v2](https://github.com/anirudhsudhir/Spidey-v2)
+
 ### About
 
 Spidey has been built following the test-driven development approach.
